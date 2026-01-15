@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cooper - Endless Runner</title>
+    <title>Cooper - The Dog Runner</title>
+    <link id="favicon" rel="icon" type="image/png">
+    <link id="apple-touch-icon" rel="apple-touch-icon" sizes="180x180">
     <style>
         * {
             margin: 0;
@@ -256,6 +258,100 @@
             console.log('Cooper banner exported as 1500x500 PNG!');
         }
 
+        // ===== FAVICON GENERATION =====
+        function generateFavicons() {
+            // Helper function to draw Cooper on a canvas at given size
+            function drawCooperIcon(size) {
+                const iconCanvas = document.createElement('canvas');
+                iconCanvas.width = size;
+                iconCanvas.height = size;
+                const iconCtx = iconCanvas.getContext('2d');
+
+                // Disable smoothing for crisp pixel art
+                iconCtx.imageSmoothingEnabled = false;
+
+                // Fill with transparent background
+                iconCtx.clearRect(0, 0, size, size);
+
+                // Calculate scale to fit Cooper in the icon (with small padding)
+                const scale = (size * 0.85) / CONFIG.COOPER_WIDTH;
+                const offsetX = (size - (CONFIG.COOPER_WIDTH * scale)) / 2;
+                const offsetY = (size - (CONFIG.COOPER_HEIGHT * scale)) / 2;
+
+                // Save context and scale
+                iconCtx.save();
+                iconCtx.translate(offsetX, offsetY);
+                iconCtx.scale(scale, scale);
+
+                // Temporarily redirect drawing context
+                const tempCanvas = canvas;
+                const tempCtx = ctx;
+                canvas = iconCanvas;
+                ctx = iconCtx;
+
+                // Draw Cooper (we need to define drawCooper's body parts inline here since it uses ctx globally)
+                // Body color
+                iconCtx.fillStyle = '#D2691E';
+
+                // Body
+                iconCtx.fillRect(7, 18, 29, 22);
+
+                // Head
+                iconCtx.fillRect(22, 7, 22, 22);
+
+                // Snout
+                iconCtx.fillStyle = '#8B4513';
+                iconCtx.fillRect(38, 16, 9, 9);
+
+                // Tongue
+                iconCtx.fillStyle = '#FF69B4';
+                iconCtx.fillRect(45, 22, 5, 3);
+                iconCtx.fillRect(47, 24, 3, 2);
+
+                // Ear
+                iconCtx.fillStyle = '#A0522D';
+                iconCtx.fillRect(18, 4, 7, 11);
+                iconCtx.fillRect(20, 13, 4, 4);
+
+                // Eye
+                iconCtx.fillStyle = 'black';
+                iconCtx.fillRect(29, 13, 4, 4);
+                iconCtx.fillStyle = 'white';
+                iconCtx.fillRect(31, 13, 2, 2);
+
+                // Nose
+                iconCtx.fillStyle = 'black';
+                iconCtx.fillRect(43, 20, 3, 3);
+
+                // Legs (standing position)
+                iconCtx.fillStyle = '#D2691E';
+                iconCtx.fillRect(27, 36, 5, 11);
+                iconCtx.fillRect(13, 36, 5, 11);
+
+                // Tail
+                iconCtx.fillStyle = '#A0522D';
+                iconCtx.fillRect(4, 22, 5, 7);
+                iconCtx.fillRect(4, 18, 3, 5);
+
+                // Restore context
+                canvas = tempCanvas;
+                ctx = tempCtx;
+                iconCtx.restore();
+
+                return iconCanvas.toDataURL('image/png');
+            }
+
+            // Generate 32x32 favicon
+            const favicon32 = drawCooperIcon(32);
+            document.getElementById('favicon').href = favicon32;
+
+            // Generate 180x180 Apple touch icon
+            const appleIcon180 = drawCooperIcon(180);
+            document.getElementById('apple-touch-icon').href = appleIcon180;
+
+            console.log('Favicons generated!');
+        }
+
         // ===== INITIALIZATION =====
         function init() {
             canvas = document.getElementById('gameCanvas');
@@ -275,6 +371,9 @@
 
             // Detect mobile
             isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+            // Generate favicons
+            generateFavicons();
 
             // Start game loop
             gameLoop();
