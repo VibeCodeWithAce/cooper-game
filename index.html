@@ -306,27 +306,6 @@
         }
 
         function handleClick(e) {
-            // Get click coordinates relative to canvas
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = CONFIG.WIDTH / rect.width;
-            const scaleY = CONFIG.HEIGHT / rect.height;
-            const clickX = (e.clientX - rect.left) * scaleX;
-            const clickY = (e.clientY - rect.top) * scaleY;
-
-            // Check if clicked on export button (only on title screen)
-            if (gameState === GAME_STATE.TITLE) {
-                const btnX = CONFIG.WIDTH - 140;
-                const btnY = CONFIG.HEIGHT - 45;
-                const btnW = 125;
-                const btnH = 28;
-
-                if (clickX >= btnX && clickX <= btnX + btnW &&
-                    clickY >= btnY && clickY <= btnY + btnH) {
-                    exportCooperBanner();
-                    return;
-                }
-            }
-
             handleAction();
         }
 
@@ -1227,27 +1206,6 @@
             ctx.font = '10px Courier New';
             ctx.textAlign = 'center';
             ctx.fillText('Built with Claude', CONFIG.WIDTH / 2, CONFIG.HEIGHT - 15);
-
-            // Export button in bottom right corner
-            const btnX = CONFIG.WIDTH - 140;
-            const btnY = CONFIG.HEIGHT - 45;
-            const btnW = 125;
-            const btnH = 28;
-
-            // Button background
-            ctx.fillStyle = 'rgba(255, 215, 0, 0.8)';
-            ctx.fillRect(btnX, btnY, btnW, btnH);
-
-            // Button border
-            ctx.strokeStyle = '#B8860B';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(btnX, btnY, btnW, btnH);
-
-            // Button text
-            ctx.fillStyle = '#1a1a2e';
-            ctx.font = 'bold 11px Courier New';
-            ctx.textAlign = 'center';
-            ctx.fillText('Download Banner', btnX + btnW / 2, btnY + btnH / 2 + 4);
         }
 
         function drawZoomTransition() {
