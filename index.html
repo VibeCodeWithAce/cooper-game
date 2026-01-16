@@ -352,6 +352,280 @@
             console.log('Favicons generated!');
         }
 
+        // ===== SPRITE EXPORT FUNCTIONS =====
+        function exportSprite(drawFunction, originalWidth, originalHeight, filename) {
+            const size = 2048;
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = size;
+            exportCanvas.height = size;
+            const exportCtx = exportCanvas.getContext('2d');
+
+            exportCtx.imageSmoothingEnabled = false;
+            exportCtx.clearRect(0, 0, size, size);
+
+            // Calculate scale (80% of canvas)
+            const targetSize = size * 0.8;
+            const scale = Math.min(targetSize / originalWidth, targetSize / originalHeight);
+
+            // Center sprite
+            const offsetX = (size - (originalWidth * scale)) / 2;
+            const offsetY = (size - (originalHeight * scale)) / 2;
+
+            // Redirect context temporarily
+            const tempCanvas = canvas;
+            const tempCtx = ctx;
+            canvas = exportCanvas;
+            ctx = exportCtx;
+
+            exportCtx.save();
+            exportCtx.translate(offsetX, offsetY);
+            exportCtx.scale(scale, scale);
+
+            drawFunction(0, 0);
+
+            exportCtx.restore();
+
+            // Restore context
+            canvas = tempCanvas;
+            ctx = tempCtx;
+
+            // Trigger download
+            exportCanvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.download = filename;
+                link.href = url;
+                link.click();
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        }
+
+        function exportCooperSprite() {
+            exportSprite(
+                (x, y) => drawCooper(x, y, 0),
+                CONFIG.COOPER_WIDTH,
+                CONFIG.COOPER_HEIGHT,
+                'cooper-sprite-2048x2048.png'
+            );
+        }
+
+        function exportFireHydrant() {
+            exportSprite(
+                (x, y) => drawFireHydrant(x, y),
+                29, 43,
+                'fire-hydrant-2048x2048.png'
+            );
+        }
+
+        function exportMailboxBlue() {
+            exportSprite(
+                (x, y) => drawMailbox(x, y, 'blue'),
+                32, 47,
+                'mailbox-blue-2048x2048.png'
+            );
+        }
+
+        function exportMailboxGreen() {
+            exportSprite(
+                (x, y) => drawMailbox(x, y, 'green'),
+                32, 47,
+                'mailbox-green-2048x2048.png'
+            );
+        }
+
+        function exportTrafficCone() {
+            exportSprite(
+                (x, y) => drawTrafficCone(x, y),
+                25, 36,
+                'traffic-cone-2048x2048.png'
+            );
+        }
+
+        function exportStreetBarrier() {
+            exportSprite(
+                (x, y) => drawStreetBarrier(x, y),
+                43, 23,
+                'street-barrier-2048x2048.png'
+            );
+        }
+
+        function exportTrashBin() {
+            exportSprite(
+                (x, y) => drawTrashBin(x, y),
+                36, 43,
+                'trash-bin-2048x2048.png'
+            );
+        }
+
+        function exportTree() {
+            exportSprite(
+                (x, y) => drawTree(x, 135), // Tree draws from ground up
+                60, 135,
+                'tree-2048x2048.png'
+            );
+        }
+
+        function exportStopSign() {
+            exportSprite(
+                (x, y) => drawStopSign(x, 140), // Stop sign draws from ground up
+                60, 140,
+                'stop-sign-2048x2048.png'
+            );
+        }
+
+        function exportTrafficLight() {
+            exportSprite(
+                (x, y) => drawTrafficLight(x, 180), // Traffic light draws from ground up
+                60, 180,
+                'traffic-light-2048x2048.png'
+            );
+        }
+
+        function exportTennisBall() {
+            exportSprite(
+                (x, y) => drawTennisBall(x + 7, y + 7, 7),
+                14, 14,
+                'tennis-ball-2048x2048.png'
+            );
+        }
+
+        function exportBuildingPlain() {
+            const size = 2048;
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = size;
+            exportCanvas.height = size;
+            const exportCtx = exportCanvas.getContext('2d');
+
+            exportCtx.imageSmoothingEnabled = false;
+            exportCtx.clearRect(0, 0, size, size);
+
+            const buildingW = 100;
+            const buildingH = 250;
+            const scale = (size * 0.8) / Math.max(buildingW, buildingH);
+            const offsetX = (size - (buildingW * scale)) / 2;
+            const offsetY = (size - (buildingH * scale)) / 2;
+
+            exportCtx.save();
+            exportCtx.translate(offsetX, offsetY);
+            exportCtx.scale(scale, scale);
+
+            // Draw building without sign
+            exportCtx.fillStyle = '#4A4A4A';
+            exportCtx.fillRect(0, 0, buildingW, buildingH);
+            exportCtx.fillStyle = '#6A6A6A';
+            exportCtx.fillRect(buildingW - 10, 0, 10, buildingH);
+
+            // Windows
+            exportCtx.fillStyle = '#A8D8EA';
+            for (let wy = 20; wy < buildingH - 10; wy += 20) {
+                for (let wx = 10; wx < buildingW - 15; wx += 18) {
+                    const hash = ((wx * 7) + (wy * 13)) % 10;
+                    if (hash > 1) {
+                        exportCtx.fillRect(wx, wy, 8, 12);
+                    }
+                }
+            }
+
+            exportCtx.restore();
+
+            exportCanvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.download = 'building-plain-2048x2048.png';
+                link.href = url;
+                link.click();
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        }
+
+        function exportBuildingWithSign() {
+            const size = 2048;
+            const exportCanvas = document.createElement('canvas');
+            exportCanvas.width = size;
+            exportCanvas.height = size;
+            const exportCtx = exportCanvas.getContext('2d');
+
+            exportCtx.imageSmoothingEnabled = false;
+            exportCtx.clearRect(0, 0, size, size);
+
+            const buildingW = 100;
+            const buildingH = 250;
+            const scale = (size * 0.8) / Math.max(buildingW, buildingH);
+            const offsetX = (size - (buildingW * scale)) / 2;
+            const offsetY = (size - (buildingH * scale)) / 2;
+
+            exportCtx.save();
+            exportCtx.translate(offsetX, offsetY);
+            exportCtx.scale(scale, scale);
+
+            // Draw building
+            exportCtx.fillStyle = '#4A4A4A';
+            exportCtx.fillRect(0, 0, buildingW, buildingH);
+            exportCtx.fillStyle = '#6A6A6A';
+            exportCtx.fillRect(buildingW - 10, 0, 10, buildingH);
+
+            // Windows
+            exportCtx.fillStyle = '#A8D8EA';
+            for (let wy = 20; wy < buildingH - 10; wy += 20) {
+                for (let wx = 10; wx < buildingW - 15; wx += 18) {
+                    const hash = ((wx * 7) + (wy * 13)) % 10;
+                    if (hash > 1) {
+                        exportCtx.fillRect(wx, wy, 8, 12);
+                    }
+                }
+            }
+
+            // CLAUDE sign
+            const signY = 30;
+            const signX = buildingW / 2 - 25;
+            exportCtx.fillStyle = '#6A6A6A';
+            exportCtx.fillRect(signX - 4, signY - 4, 54, 18);
+            exportCtx.fillStyle = '#FF69B4';
+            exportCtx.font = 'bold 11px Courier New';
+            exportCtx.textAlign = 'center';
+            exportCtx.fillText('CLAUDE', signX + 23, signY + 9);
+
+            exportCtx.restore();
+
+            exportCanvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.download = 'building-claude-sign-2048x2048.png';
+                link.href = url;
+                link.click();
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        }
+
+        function downloadAllSprites() {
+            const sprites = [
+                { fn: exportCooperSprite, name: 'Cooper' },
+                { fn: exportFireHydrant, name: 'Fire Hydrant' },
+                { fn: exportMailboxBlue, name: 'Blue Mailbox' },
+                { fn: exportMailboxGreen, name: 'Green Mailbox' },
+                { fn: exportTrafficCone, name: 'Traffic Cone' },
+                { fn: exportStreetBarrier, name: 'Street Barrier' },
+                { fn: exportTrashBin, name: 'Trash Bin' },
+                { fn: exportTree, name: 'Tree' },
+                { fn: exportStopSign, name: 'Stop Sign' },
+                { fn: exportTrafficLight, name: 'Traffic Light' },
+                { fn: exportTennisBall, name: 'Tennis Ball' },
+                { fn: exportBuildingPlain, name: 'Building (Plain)' },
+                { fn: exportBuildingWithSign, name: 'Building (CLAUDE Sign)' }
+            ];
+
+            let index = 0;
+            function downloadNext() {
+                if (index < sprites.length) {
+                    console.log(`Downloading ${sprites[index].name}...`);
+                    sprites[index].fn();
+                    index++;
+                    setTimeout(downloadNext, 500); // Delay between downloads
+                }
+            }
+            downloadNext();
+        }
+
         // ===== INITIALIZATION =====
         function init() {
             canvas = document.getElementById('gameCanvas');
@@ -405,6 +679,27 @@
         }
 
         function handleClick(e) {
+            // Get click coordinates relative to canvas
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = CONFIG.WIDTH / rect.width;
+            const scaleY = CONFIG.HEIGHT / rect.height;
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            // Check if clicked on sprite download button (only on title screen)
+            if (gameState === GAME_STATE.TITLE) {
+                const spriteBtnX = 15;
+                const spriteBtnY = CONFIG.HEIGHT - 45;
+                const spriteBtnW = 155;
+                const spriteBtnH = 28;
+
+                if (clickX >= spriteBtnX && clickX <= spriteBtnX + spriteBtnW &&
+                    clickY >= spriteBtnY && clickY <= spriteBtnY + spriteBtnH) {
+                    downloadAllSprites();
+                    return;
+                }
+            }
+
             handleAction();
         }
 
@@ -1305,6 +1600,24 @@
             ctx.font = '10px Courier New';
             ctx.textAlign = 'center';
             ctx.fillText('Built with Claude', CONFIG.WIDTH / 2, CONFIG.HEIGHT - 15);
+
+            // Download sprites button (bottom left)
+            const spriteBtnX = 15;
+            const spriteBtnY = CONFIG.HEIGHT - 45;
+            const spriteBtnW = 155;
+            const spriteBtnH = 28;
+
+            ctx.fillStyle = 'rgba(100, 149, 237, 0.8)';
+            ctx.fillRect(spriteBtnX, spriteBtnY, spriteBtnW, spriteBtnH);
+
+            ctx.strokeStyle = '#4169E1';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(spriteBtnX, spriteBtnY, spriteBtnW, spriteBtnH);
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 11px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('Download All Sprites', spriteBtnX + spriteBtnW / 2, spriteBtnY + spriteBtnH / 2 + 4);
         }
 
         function drawZoomTransition() {
