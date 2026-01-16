@@ -679,27 +679,6 @@
         }
 
         function handleClick(e) {
-            // Get click coordinates relative to canvas
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = CONFIG.WIDTH / rect.width;
-            const scaleY = CONFIG.HEIGHT / rect.height;
-            const clickX = (e.clientX - rect.left) * scaleX;
-            const clickY = (e.clientY - rect.top) * scaleY;
-
-            // Check if clicked on sprite download button (only on title screen)
-            if (gameState === GAME_STATE.TITLE) {
-                const spriteBtnX = 15;
-                const spriteBtnY = CONFIG.HEIGHT - 45;
-                const spriteBtnW = 155;
-                const spriteBtnH = 28;
-
-                if (clickX >= spriteBtnX && clickX <= spriteBtnX + spriteBtnW &&
-                    clickY >= spriteBtnY && clickY <= spriteBtnY + spriteBtnH) {
-                    downloadAllSprites();
-                    return;
-                }
-            }
-
             handleAction();
         }
 
@@ -1600,24 +1579,6 @@
             ctx.font = '10px Courier New';
             ctx.textAlign = 'center';
             ctx.fillText('Built with Claude', CONFIG.WIDTH / 2, CONFIG.HEIGHT - 15);
-
-            // Download sprites button (bottom left)
-            const spriteBtnX = 15;
-            const spriteBtnY = CONFIG.HEIGHT - 45;
-            const spriteBtnW = 155;
-            const spriteBtnH = 28;
-
-            ctx.fillStyle = 'rgba(100, 149, 237, 0.8)';
-            ctx.fillRect(spriteBtnX, spriteBtnY, spriteBtnW, spriteBtnH);
-
-            ctx.strokeStyle = '#4169E1';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(spriteBtnX, spriteBtnY, spriteBtnW, spriteBtnH);
-
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 11px Courier New';
-            ctx.textAlign = 'center';
-            ctx.fillText('Download All Sprites', spriteBtnX + spriteBtnW / 2, spriteBtnY + spriteBtnH / 2 + 4);
         }
 
         function drawZoomTransition() {
