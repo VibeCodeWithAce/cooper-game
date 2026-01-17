@@ -104,14 +104,76 @@
             GAME_OVER: 'game_over'
         };
 
+        // ===== WORLDS CONFIGURATION =====
+        const WORLDS = {
+            CITY: 'city',
+            GASTOWN: 'gastown'
+        };
+
+        // Gastown color palette (warm steampunk industrial - with variety)
+        const GASTOWN_COLORS = {
+            sky: {
+                top: '#9370DB',       // Muted purple at very top
+                mid: '#E8A862',       // Orange transition
+                bottom: '#FFDAB9'     // Warm peach at horizon
+            },
+            farSilhouette: '#3D2914', // Deep brown/charcoal for far buildings
+            buildings: {
+                // Brick variety (pick randomly for each building)
+                brickRed: '#A0522D',    // Sienna - redder brick
+                brickTan: '#D2691E',    // Chocolate - warm tan brick
+                brickBrown: '#8B4513',  // Saddle brown - classic brick
+                brickDark: '#5D3A1A',   // Dark brown mortar
+                // Metal accents
+                copper: '#B87333',      // Copper
+                copperLight: '#DA8A47', // Lighter copper highlight
+                brass: '#CD7F32',       // Brass
+                brassLight: '#E6A855',  // Shiny brass highlight
+                // Contrast trim
+                tealTrim: '#2F4F4F',    // Dark slate gray/teal for contrast
+                // Windows - brighter!
+                window: '#FFA500',      // Bright orange glow
+                windowBright: '#FFD700',// Golden yellow
+                windowGlow: 'rgba(255, 165, 0, 0.5)'
+            },
+            ground: {
+                cobbleGray: '#696969',  // Dim gray cobbles
+                cobbleBrown: '#8B7355', // Brown cobbles
+                cobbleDark: '#4A4A4A',  // Dark gaps
+                track: '#3D3D3D',       // Dark iron/steel
+                trackShine: '#5A5A5A',  // Steel highlight
+                tie: '#4A3728'          // Dark wood ties
+            },
+            accents: {
+                steam: 'rgba(255, 255, 255, 0.6)',
+                ember: '#FF6B35',
+                gold: '#FFD700',
+                cream: '#F5DEB3',
+                shadow: 'rgba(0, 0, 0, 0.3)'
+            }
+        };
+
         // ===== GAME VARIABLES =====
         let canvas, ctx;
         let gameState = GAME_STATE.TITLE;
+        let currentWorld = WORLDS.CITY; // Default world
         let score = 0;
         let highScore = 0;
         let level = 1;
         let gameSpeed = CONFIG.BASE_SPEED;
         let frameCount = 0;
+
+        // Steam particles (for Gastown)
+        let steamParticles = [];
+
+        // ===== SOUND SYSTEM =====
+        let audioContext = null;
+        let isMuted = false;
+        let gastownMusic = null;
+        let musicPlaying = false;
+
+        // Sound effect generators (created on first user interaction)
+        let soundsInitialized = false;
 
         // Cooper
         let cooper = {
@@ -141,11 +203,19 @@
         // Ground
         let groundOffset = 0;
 
-        // Parallax background
+        // Parallax background (City)
         let backgroundLayers = {
             clouds: { offset: 0, speed: 0.2 },
             buildings: { offset: 0, speed: 0.5 },
             airplanes: []
+        };
+
+        // Gastown parallax layers
+        let gastownLayers = {
+            far: { offset: 0, speed: 0.2 },       // Smokestacks, airship
+            midFar: { offset: 0, speed: 0.3 },    // Clock tower, water tower, gears
+            mid: { offset: 0, speed: 0.5 },       // Factory buildings
+            airship: { x: 600, y: 50 }            // Floating airship position
         };
 
         // Zoom transition
@@ -631,6 +701,13 @@
             canvas = document.getElementById('gameCanvas');
             ctx = canvas.getContext('2d');
 
+            // Check URL for world parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const worldParam = urlParams.get('world');
+            if (worldParam && worldParam.toLowerCase() === 'gastown') {
+                currentWorld = WORLDS.GASTOWN;
+            }
+
             // Set canvas size
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
@@ -710,12 +787,20 @@
             ball.velocityX = 12; // Fast horizontal movement
             ball.velocityY = -1.5; // Slight upward rise, stays high
 
-            // Initialize background for transition
-            backgroundLayers.clouds.offset = 0;
-            backgroundLayers.buildings.offset = 0;
-            backgroundLayers.airplanes = [
-                { x: CONFIG.WIDTH + 200, y: 80 + Math.random() * 40, speed: 0.3 }
-            ];
+            // Initialize background for transition based on world
+            if (currentWorld === WORLDS.GASTOWN) {
+                gastownLayers.far.offset = 0;
+                gastownLayers.midFar.offset = 0;
+                gastownLayers.mid.offset = 0;
+                gastownLayers.airship = { x: CONFIG.WIDTH + 100, y: 50 };
+                steamParticles = [];
+            } else {
+                backgroundLayers.clouds.offset = 0;
+                backgroundLayers.buildings.offset = 0;
+                backgroundLayers.airplanes = [
+                    { x: CONFIG.WIDTH + 200, y: 80 + Math.random() * 40, speed: 0.3 }
+                ];
+            }
         }
 
         function startGame() {
@@ -732,12 +817,20 @@
             cooper.velocityY = 0;
             cooper.isJumping = false;
 
-            // Initialize background layers
-            backgroundLayers.clouds.offset = 0;
-            backgroundLayers.buildings.offset = 0;
-            backgroundLayers.airplanes = [
-                { x: CONFIG.WIDTH + 200, y: 80 + Math.random() * 40, speed: 0.3 }
-            ];
+            // Initialize background layers based on world
+            if (currentWorld === WORLDS.GASTOWN) {
+                gastownLayers.far.offset = 0;
+                gastownLayers.midFar.offset = 0;
+                gastownLayers.mid.offset = 0;
+                gastownLayers.airship = { x: CONFIG.WIDTH + 100, y: 50 };
+                steamParticles = [];
+            } else {
+                backgroundLayers.clouds.offset = 0;
+                backgroundLayers.buildings.offset = 0;
+                backgroundLayers.airplanes = [
+                    { x: CONFIG.WIDTH + 200, y: 80 + Math.random() * 40, speed: 0.3 }
+                ];
+            }
         }
 
         function resetGame() {
@@ -801,8 +894,8 @@
                 gameSpeed = CONFIG.BASE_SPEED + (level - 1) * CONFIG.SPEED_INCREASE_PER_LEVEL;
                 levelUpTimer = 60; // Show "LEVEL UP" for 60 frames
 
-                // Change day/night every 3 levels
-                if (level % 3 === 0) {
+                // Change day/night every 3 levels (City only - Gastown has no day/night cycle)
+                if (currentWorld === WORLDS.CITY && level % 3 === 0) {
                     isDayTime = !isDayTime;
                 }
             }
@@ -815,28 +908,46 @@
             // Update ground
             groundOffset = (groundOffset + gameSpeed) % 40;
 
-            // Update parallax background layers
-            backgroundLayers.clouds.offset = (backgroundLayers.clouds.offset + gameSpeed * 0.2) % 400;
-            backgroundLayers.buildings.offset = (backgroundLayers.buildings.offset + gameSpeed * 0.5) % 1680; // 14 elements × 120px spacing
+            // Update parallax background layers based on world
+            if (currentWorld === WORLDS.GASTOWN) {
+                // Gastown layers
+                gastownLayers.far.offset = (gastownLayers.far.offset + gameSpeed * 0.2) % 800;
+                gastownLayers.midFar.offset = (gastownLayers.midFar.offset + gameSpeed * 0.3) % 850;
+                gastownLayers.mid.offset = (gastownLayers.mid.offset + gameSpeed * 0.5) % 840; // 7 elements × 120px
 
-            // Update airplanes
-            for (let i = backgroundLayers.airplanes.length - 1; i >= 0; i--) {
-                backgroundLayers.airplanes[i].x -= gameSpeed * backgroundLayers.airplanes[i].speed;
+                // Move airship slowly
+                gastownLayers.airship.x -= gameSpeed * 0.15;
+                // Slight bobbing motion
+                gastownLayers.airship.y = 50 + Math.sin(frameCount * 0.02) * 5;
 
-                // Respawn airplane when it goes off screen
-                if (backgroundLayers.airplanes[i].x < -300) {
-                    backgroundLayers.airplanes[i].x = CONFIG.WIDTH + 200 + Math.random() * 400;
-                    backgroundLayers.airplanes[i].y = 80 + Math.random() * 40;
+                // Respawn airship when off screen
+                if (gastownLayers.airship.x < -80) {
+                    gastownLayers.airship.x = CONFIG.WIDTH + 100;
                 }
-            }
+            } else {
+                // City layers
+                backgroundLayers.clouds.offset = (backgroundLayers.clouds.offset + gameSpeed * 0.2) % 400;
+                backgroundLayers.buildings.offset = (backgroundLayers.buildings.offset + gameSpeed * 0.5) % 1680; // 14 elements × 120px spacing
 
-            // Spawn second airplane if only one exists and conditions are right
-            if (backgroundLayers.airplanes.length < 2 && Math.random() < 0.002) {
-                backgroundLayers.airplanes.push({
-                    x: CONFIG.WIDTH + 200,
-                    y: 60 + Math.random() * 50,
-                    speed: 0.3
-                });
+                // Update airplanes
+                for (let i = backgroundLayers.airplanes.length - 1; i >= 0; i--) {
+                    backgroundLayers.airplanes[i].x -= gameSpeed * backgroundLayers.airplanes[i].speed;
+
+                    // Respawn airplane when it goes off screen
+                    if (backgroundLayers.airplanes[i].x < -300) {
+                        backgroundLayers.airplanes[i].x = CONFIG.WIDTH + 200 + Math.random() * 400;
+                        backgroundLayers.airplanes[i].y = 80 + Math.random() * 40;
+                    }
+                }
+
+                // Spawn second airplane if only one exists and conditions are right
+                if (backgroundLayers.airplanes.length < 2 && Math.random() < 0.002) {
+                    backgroundLayers.airplanes.push({
+                        x: CONFIG.WIDTH + 200,
+                        y: 60 + Math.random() * 50,
+                        speed: 0.3
+                    });
+                }
             }
 
             // Update obstacles
@@ -881,6 +992,24 @@
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 obstacles[i].x -= gameSpeed;
 
+                // Update steam vent animation (Gastown)
+                if (obstacles[i].type === 'steam_vent') {
+                    obstacles[i].steamTimer++;
+                    // Steam cycles: 60 frames on, 90 frames off
+                    const cyclePos = obstacles[i].steamTimer % 150;
+                    obstacles[i].steamActive = cyclePos < 60;
+
+                    // Adjust hitbox when steam is active
+                    const baseY = CONFIG.COOPER_GROUND_Y + CONFIG.COOPER_HEIGHT;
+                    if (obstacles[i].steamActive) {
+                        obstacles[i].y = baseY - 45; // Extended hitbox
+                        obstacles[i].height = 45;
+                    } else {
+                        obstacles[i].y = baseY - 23; // Base hitbox
+                        obstacles[i].height = 23;
+                    }
+                }
+
                 // Remove off-screen obstacles
                 if (obstacles[i].x + obstacles[i].width < 0) {
                     obstacles.splice(i, 1);
@@ -889,10 +1018,12 @@
         }
 
         function spawnObstacle() {
-            const type = getObstacleType();
+            // Use world-specific obstacle types
+            const type = currentWorld === WORLDS.GASTOWN ? getGastownObstacleType() : getObstacleType();
             const baseY = CONFIG.COOPER_GROUND_Y + CONFIG.COOPER_HEIGHT;
 
             switch(type) {
+                // ===== CITY OBSTACLES =====
                 case 'hydrant':
                     obstacles.push({
                         x: CONFIG.WIDTH,
@@ -960,6 +1091,96 @@
                         type: 'cone'
                     });
                     break;
+
+                // ===== GASTOWN OBSTACLES =====
+                case 'brass_barrel':
+                    obstacles.push({
+                        x: CONFIG.WIDTH,
+                        y: baseY - 43,
+                        width: 29,
+                        height: 43,
+                        type: 'brass_barrel'
+                    });
+                    break;
+
+                case 'wooden_crate':
+                    obstacles.push({
+                        x: CONFIG.WIDTH,
+                        y: baseY - 40,
+                        width: 35,
+                        height: 40,
+                        type: 'wooden_crate'
+                    });
+                    break;
+
+                case 'pipe_stack':
+                    obstacles.push({
+                        x: CONFIG.WIDTH,
+                        y: baseY - 28,
+                        width: 40,
+                        height: 28,
+                        type: 'pipe_stack'
+                    });
+                    break;
+
+                case 'large_gear':
+                    obstacles.push({
+                        x: CONFIG.WIDTH,
+                        y: baseY - 38,
+                        width: 38,
+                        height: 38,
+                        type: 'large_gear'
+                    });
+                    break;
+
+                case 'coal_cart':
+                    obstacles.push({
+                        x: CONFIG.WIDTH,
+                        y: baseY - 48,
+                        width: 45,
+                        height: 48,
+                        type: 'coal_cart'
+                    });
+                    break;
+
+                case 'steam_vent':
+                    obstacles.push({
+                        x: CONFIG.WIDTH,
+                        y: baseY - 23,
+                        width: 30,
+                        height: 23,
+                        type: 'steam_vent',
+                        steamActive: false,
+                        steamTimer: 0
+                    });
+                    break;
+
+                case 'lantern_post':
+                    obstacles.push({
+                        x: CONFIG.WIDTH,
+                        y: baseY - 55,
+                        width: 25,
+                        height: 55,
+                        type: 'lantern_post'
+                    });
+                    break;
+
+                case 'double_crate':
+                    obstacles.push({
+                        x: CONFIG.WIDTH,
+                        y: baseY - 40,
+                        width: 35,
+                        height: 40,
+                        type: 'wooden_crate'
+                    });
+                    obstacles.push({
+                        x: CONFIG.WIDTH + 55,
+                        y: baseY - 40,
+                        width: 35,
+                        height: 40,
+                        type: 'wooden_crate'
+                    });
+                    break;
             }
         }
 
@@ -993,6 +1214,41 @@
                 if (rand < 0.70) return 'barrier';
                 if (rand < 0.85) return 'trash_bin';
                 return 'double_cone';
+            }
+        }
+
+        function getGastownObstacleType() {
+            if (level < 3) {
+                // Levels 1-2: Brass barrel, wooden crate
+                return Math.random() < 0.5 ? 'brass_barrel' : 'wooden_crate';
+            } else if (level < 5) {
+                // Levels 3-4: Add pipe stack, large gear
+                const rand = Math.random();
+                if (rand < 0.25) return 'brass_barrel';
+                if (rand < 0.50) return 'wooden_crate';
+                if (rand < 0.75) return 'pipe_stack';
+                return 'large_gear';
+            } else if (level < 7) {
+                // Levels 5-6: Add coal cart, steam vent, double crate
+                const rand = Math.random();
+                if (rand < 0.15) return 'brass_barrel';
+                if (rand < 0.30) return 'wooden_crate';
+                if (rand < 0.45) return 'pipe_stack';
+                if (rand < 0.60) return 'large_gear';
+                if (rand < 0.75) return 'coal_cart';
+                if (rand < 0.90) return 'steam_vent';
+                return 'double_crate';
+            } else {
+                // Level 7+: Add lantern post, increase variety
+                const rand = Math.random();
+                if (rand < 0.12) return 'brass_barrel';
+                if (rand < 0.24) return 'wooden_crate';
+                if (rand < 0.36) return 'pipe_stack';
+                if (rand < 0.48) return 'large_gear';
+                if (rand < 0.60) return 'coal_cart';
+                if (rand < 0.72) return 'steam_vent';
+                if (rand < 0.86) return 'lantern_post';
+                return 'double_crate';
             }
         }
 
@@ -1046,7 +1302,13 @@
         }
 
         function drawBackground() {
-            // Sky gradient (day/night cycle)
+            // Use world-specific background rendering
+            if (currentWorld === WORLDS.GASTOWN) {
+                drawGastownBackground();
+                return;
+            }
+
+            // City world (default) - Sky gradient (day/night cycle)
             const skyGradient = ctx.createLinearGradient(0, 0, 0, CONFIG.HEIGHT);
             if (isDayTime) {
                 skyGradient.addColorStop(0, '#87CEEB');
@@ -1460,18 +1722,623 @@
             }
         }
 
-        function drawTitle() {
-            // Gradient background for title
-            const bgGradient = ctx.createLinearGradient(0, 0, 0, CONFIG.HEIGHT);
-            bgGradient.addColorStop(0, '#1a1a2e');
-            bgGradient.addColorStop(1, '#2a2a4e');
-            ctx.fillStyle = bgGradient;
+        // ===== GASTOWN RENDERING =====
+        function drawGastownBackground() {
+            // Sky gradient: purple at top -> orange -> warm peach at horizon
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, CONFIG.HEIGHT);
+            skyGradient.addColorStop(0, GASTOWN_COLORS.sky.top);     // Purple
+            skyGradient.addColorStop(0.4, GASTOWN_COLORS.sky.mid);   // Orange
+            skyGradient.addColorStop(1, GASTOWN_COLORS.sky.bottom);  // Peach
+            ctx.fillStyle = skyGradient;
             ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
 
-            // Decorative ground line
-            const groundY = CONFIG.HEIGHT - 80;
-            ctx.fillStyle = '#3a3a5e';
-            ctx.fillRect(0, groundY, CONFIG.WIDTH, 80);
+            // Only draw parallax layers if playing or game over
+            if (gameState === GAME_STATE.PLAYING || gameState === GAME_STATE.GAME_OVER) {
+                drawGastownFarLayer();
+                drawGastownMidFarLayer();
+                drawGastownMidLayer();
+                updateSteamParticles();
+                drawSteamParticles();
+            }
+
+            // Ground
+            drawGastownGround();
+        }
+
+        function drawGastownFarLayer() {
+            // Far layer (0.2x speed): smokestacks silhouettes and airship
+
+            // Draw distant smokestack silhouettes - darker for depth
+            const stackPattern = [
+                { x: 100, h: 120 },
+                { x: 250, h: 90 },
+                { x: 400, h: 140 },
+                { x: 550, h: 100 },
+                { x: 700, h: 130 }
+            ];
+
+            // Dark charcoal/brown silhouettes for depth contrast
+            ctx.fillStyle = GASTOWN_COLORS.farSilhouette;
+
+            for (let offsetX = -gastownLayers.far.offset; offsetX < CONFIG.WIDTH + 200; offsetX += 800) {
+                for (let stack of stackPattern) {
+                    const x = offsetX + stack.x;
+                    if (x > -50 && x < CONFIG.WIDTH + 50) {
+                        // Smokestack base
+                        ctx.fillRect(x, CONFIG.HEIGHT - 150 - stack.h, 20, stack.h);
+                        // Smokestack top (wider cap)
+                        ctx.fillRect(x - 5, CONFIG.HEIGHT - 150 - stack.h, 30, 10);
+                        // Tiny glowing window on some stacks
+                        if (stack.h > 100) {
+                            ctx.fillStyle = GASTOWN_COLORS.buildings.window;
+                            ctx.fillRect(x + 6, CONFIG.HEIGHT - 150 - stack.h + 30, 8, 12);
+                            ctx.fillStyle = GASTOWN_COLORS.farSilhouette;
+                        }
+                    }
+                }
+            }
+
+            // Draw floating airship
+            drawGastownAirship(gastownLayers.airship.x, gastownLayers.airship.y);
+        }
+
+        function drawGastownAirship(x, y) {
+            // Envelope (balloon part) - copper/brass colored
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+
+            // Main envelope body (ellipse)
+            ctx.beginPath();
+            ctx.ellipse(x, y, 60, 25, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Highlight on envelope
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.beginPath();
+            ctx.ellipse(x, y - 8, 50, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Gondola (cabin underneath)
+            ctx.fillStyle = '#654321';
+            ctx.fillRect(x - 25, y + 25, 50, 15);
+
+            // Gondola windows
+            ctx.fillStyle = GASTOWN_COLORS.buildings.window;
+            ctx.fillRect(x - 18, y + 28, 8, 8);
+            ctx.fillRect(x - 4, y + 28, 8, 8);
+            ctx.fillRect(x + 10, y + 28, 8, 8);
+
+            // Ropes connecting envelope to gondola
+            ctx.strokeStyle = '#8B7355';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x - 20, y + 20);
+            ctx.lineTo(x - 20, y + 25);
+            ctx.moveTo(x + 20, y + 20);
+            ctx.lineTo(x + 20, y + 25);
+            ctx.stroke();
+
+            // Propeller at back
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 55, y - 5, 8, 10);
+
+            // Propeller blades (animated based on frame)
+            const bladeAngle = (frameCount * 0.3) % (Math.PI * 2);
+            ctx.save();
+            ctx.translate(x + 63, y);
+            ctx.rotate(bladeAngle);
+            ctx.fillStyle = '#4A4A4A';
+            ctx.fillRect(-2, -15, 4, 30);
+            ctx.restore();
+
+            // Fins
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+            ctx.beginPath();
+            ctx.moveTo(x + 50, y - 15);
+            ctx.lineTo(x + 60, y - 25);
+            ctx.lineTo(x + 60, y - 15);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 50, y + 15);
+            ctx.lineTo(x + 60, y + 25);
+            ctx.lineTo(x + 60, y + 15);
+            ctx.fill();
+        }
+
+        function drawGastownMidFarLayer() {
+            // Mid-far layer (0.3x speed): Clock tower, water tower, large gears
+
+            const landmarkPattern = [
+                { type: 'clock_tower', x: 150 },
+                { type: 'gear_large', x: 350 },
+                { type: 'water_tower', x: 500 },
+                { type: 'gear_large', x: 700 }
+            ];
+
+            const groundY = CONFIG.COOPER_GROUND_Y + CONFIG.COOPER_HEIGHT;
+
+            for (let offsetX = -gastownLayers.midFar.offset; offsetX < CONFIG.WIDTH + 200; offsetX += 850) {
+                for (let landmark of landmarkPattern) {
+                    const x = offsetX + landmark.x;
+                    if (x > -100 && x < CONFIG.WIDTH + 100) {
+                        if (landmark.type === 'clock_tower') {
+                            drawGastownClockTower(x, groundY);
+                        } else if (landmark.type === 'water_tower') {
+                            drawGastownWaterTower(x, groundY);
+                        } else if (landmark.type === 'gear_large') {
+                            drawGastownGear(x, groundY - 180, 40);
+                        }
+                    }
+                }
+            }
+        }
+
+        function drawGastownClockTower(x, groundY) {
+            const towerHeight = 220;
+            const towerWidth = 50;
+
+            // Tower base (brick)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brick;
+            ctx.fillRect(x, groundY - towerHeight, towerWidth, towerHeight);
+
+            // Brick pattern
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brickDark;
+            for (let row = 0; row < towerHeight; row += 12) {
+                const offsetBrick = (Math.floor(row / 12) % 2) * 10;
+                for (let col = 0; col < towerWidth; col += 20) {
+                    ctx.fillRect(x + col + offsetBrick, groundY - towerHeight + row, 18, 10);
+                }
+            }
+
+            // Tower roof (pointed)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+            ctx.beginPath();
+            ctx.moveTo(x - 5, groundY - towerHeight);
+            ctx.lineTo(x + towerWidth / 2, groundY - towerHeight - 40);
+            ctx.lineTo(x + towerWidth + 5, groundY - towerHeight);
+            ctx.fill();
+
+            // Clock face
+            const clockY = groundY - towerHeight + 40;
+            const clockRadius = 18;
+
+            // Clock background
+            ctx.fillStyle = '#F5DEB3';
+            ctx.beginPath();
+            ctx.arc(x + towerWidth / 2, clockY, clockRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Clock border (brass)
+            ctx.strokeStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Clock hands
+            ctx.strokeStyle = '#2a2a2a';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x + towerWidth / 2, clockY);
+            ctx.lineTo(x + towerWidth / 2, clockY - 12);
+            ctx.moveTo(x + towerWidth / 2, clockY);
+            ctx.lineTo(x + towerWidth / 2 + 8, clockY + 4);
+            ctx.stroke();
+
+            // "GAS TOWN" sign on tower
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 2, groundY - towerHeight + 80, towerWidth - 4, 20);
+            ctx.fillStyle = '#2a2a2a';
+            ctx.font = 'bold 9px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('GAS', x + towerWidth / 2, groundY - towerHeight + 92);
+            ctx.fillText('TOWN', x + towerWidth / 2, groundY - towerHeight + 100);
+
+            // Windows
+            ctx.fillStyle = GASTOWN_COLORS.buildings.window;
+            for (let wy = groundY - towerHeight + 110; wy < groundY - 20; wy += 30) {
+                ctx.fillRect(x + 10, wy, 12, 18);
+                ctx.fillRect(x + 28, wy, 12, 18);
+            }
+        }
+
+        function drawGastownWaterTower(x, groundY) {
+            // Support legs
+            ctx.fillStyle = '#4A4A4A';
+            ctx.fillRect(x + 5, groundY - 120, 6, 120);
+            ctx.fillRect(x + 35, groundY - 120, 6, 120);
+
+            // Cross braces
+            ctx.strokeStyle = '#4A4A4A';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x + 8, groundY - 40);
+            ctx.lineTo(x + 38, groundY - 80);
+            ctx.moveTo(x + 38, groundY - 40);
+            ctx.lineTo(x + 8, groundY - 80);
+            ctx.stroke();
+
+            // Tank body (copper)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+            ctx.fillRect(x, groundY - 180, 46, 60);
+
+            // Tank bands
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x - 2, groundY - 175, 50, 5);
+            ctx.fillRect(x - 2, groundY - 150, 50, 5);
+            ctx.fillRect(x - 2, groundY - 125, 50, 5);
+
+            // Conical roof
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+            ctx.beginPath();
+            ctx.moveTo(x - 3, groundY - 180);
+            ctx.lineTo(x + 23, groundY - 205);
+            ctx.lineTo(x + 49, groundY - 180);
+            ctx.fill();
+
+            // Rivets
+            ctx.fillStyle = '#8B7355';
+            for (let i = 0; i < 4; i++) {
+                ctx.fillRect(x + 5 + i * 12, groundY - 170, 3, 3);
+            }
+        }
+
+        function drawGastownGear(x, y, radius) {
+            const teeth = 12;
+            const toothHeight = radius * 0.2;
+
+            ctx.fillStyle = 'rgba(184, 115, 51, 0.4)'; // Semi-transparent copper
+
+            ctx.beginPath();
+            for (let i = 0; i < teeth; i++) {
+                const angle1 = (i / teeth) * Math.PI * 2 + (frameCount * 0.01);
+                const angle2 = ((i + 0.5) / teeth) * Math.PI * 2 + (frameCount * 0.01);
+
+                const innerX = x + Math.cos(angle1) * (radius - toothHeight);
+                const innerY = y + Math.sin(angle1) * (radius - toothHeight);
+                const outerX = x + Math.cos(angle1) * radius;
+                const outerY = y + Math.sin(angle1) * radius;
+                const nextInnerX = x + Math.cos(angle2) * (radius - toothHeight);
+                const nextInnerY = y + Math.sin(angle2) * (radius - toothHeight);
+
+                if (i === 0) {
+                    ctx.moveTo(innerX, innerY);
+                }
+                ctx.lineTo(outerX, outerY);
+                ctx.lineTo(nextInnerX, nextInnerY);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // Center hub
+            ctx.fillStyle = 'rgba(139, 69, 19, 0.5)';
+            ctx.beginPath();
+            ctx.arc(x, y, radius * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Center hole
+            ctx.fillStyle = 'rgba(74, 74, 74, 0.5)';
+            ctx.beginPath();
+            ctx.arc(x, y, radius * 0.1, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawGastownMidLayer() {
+            // Mid layer (0.5x speed): Factory buildings with pipes
+            // Each building has a color variant for variety
+
+            const buildingPattern = [
+                { type: 'factory', w: 100, h: 180, pipes: true, sign: true, colorVar: 0 },   // Red brick
+                { type: 'factory', w: 80, h: 150, pipes: false, sign: false, colorVar: 1 },  // Tan brick
+                { type: 'factory', w: 120, h: 200, pipes: true, sign: false, colorVar: 2 },  // Brown brick
+                { type: 'chimney', w: 40, h: 160, colorVar: 0 },
+                { type: 'factory', w: 90, h: 170, pipes: true, sign: true, colorVar: 1 },    // Tan brick
+                { type: 'factory', w: 70, h: 140, pipes: false, sign: false, colorVar: 0 },  // Red brick
+                { type: 'chimney', w: 40, h: 140, colorVar: 2 }
+            ];
+
+            const groundY = CONFIG.COOPER_GROUND_Y + CONFIG.COOPER_HEIGHT;
+            let elementIndex = 0;
+
+            for (let offsetX = -gastownLayers.mid.offset; offsetX < CONFIG.WIDTH + 200; offsetX += 120) {
+                const element = buildingPattern[elementIndex % buildingPattern.length];
+                elementIndex++;
+
+                const x = offsetX;
+
+                if (x > -150 && x < CONFIG.WIDTH + 50) {
+                    if (element.type === 'factory') {
+                        drawGastownFactory(x, groundY, element.w, element.h, element.pipes, element.sign, element.colorVar);
+                    } else if (element.type === 'chimney') {
+                        drawGastownChimney(x, groundY, element.h, element.colorVar);
+                    }
+                }
+            }
+        }
+
+        function drawGastownFactory(x, groundY, w, h, hasPipes, hasSign, colorVar = 0) {
+            const y = groundY - h;
+
+            // Pick brick color based on variant
+            const brickColors = [
+                GASTOWN_COLORS.buildings.brickRed,   // 0: Redder brick
+                GASTOWN_COLORS.buildings.brickTan,   // 1: Warm tan
+                GASTOWN_COLORS.buildings.brickBrown  // 2: Classic brown
+            ];
+            const brickColor = brickColors[colorVar % 3];
+
+            // Main building (brick)
+            ctx.fillStyle = brickColor;
+            ctx.fillRect(x, y, w, h);
+
+            // Brick pattern (subtle mortar lines)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brickDark;
+            for (let row = 0; row < h; row += 10) {
+                const offsetBrick = (Math.floor(row / 10) % 2) * 8;
+                for (let col = 0; col < w - 5; col += 16) {
+                    if ((col + row) % 30 !== 0) {
+                        ctx.fillRect(x + col + offsetBrick, y + row, 14, 8);
+                    }
+                }
+            }
+
+            // Teal/dark green accent trim on some buildings (for contrast)
+            if (colorVar === 1) {
+                ctx.fillStyle = GASTOWN_COLORS.buildings.tealTrim;
+                ctx.fillRect(x, y + h - 8, w, 8); // Bottom trim
+                ctx.fillRect(x, y + Math.floor(h / 2), w, 4); // Mid trim
+            }
+
+            // Roof trim (copper with highlight)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+            ctx.fillRect(x - 3, y - 5, w + 6, 8);
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copperLight;
+            ctx.fillRect(x - 3, y - 5, w + 6, 2); // Highlight on top
+
+            // Windows with BRIGHT orange/yellow glow
+            for (let wy = y + 25; wy < y + h - 15; wy += 25) {
+                for (let wx = x + 12; wx < x + w - 15; wx += 22) {
+                    // Glow halo first (behind window)
+                    ctx.fillStyle = GASTOWN_COLORS.buildings.windowGlow;
+                    ctx.fillRect(wx - 3, wy - 3, 16, 21);
+
+                    // Bright window
+                    ctx.fillStyle = GASTOWN_COLORS.buildings.window;
+                    ctx.fillRect(wx, wy, 10, 15);
+
+                    // Golden highlight in center
+                    ctx.fillStyle = GASTOWN_COLORS.buildings.windowBright;
+                    ctx.fillRect(wx + 2, wy + 3, 6, 9);
+                }
+            }
+
+            // Brass pipes on side (with shine)
+            if (hasPipes) {
+                ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+                ctx.fillRect(x + w - 8, y + 20, 6, h - 40);
+                ctx.fillRect(x + w - 10, y + 30, 10, 8);
+                ctx.fillRect(x + w - 10, y + h - 50, 10, 8);
+
+                // Pipe highlight (lighter edge)
+                ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+                ctx.fillRect(x + w - 8, y + 20, 2, h - 40);
+
+                // Spawn steam particles from pipe tops occasionally
+                if (Math.random() < 0.03 && steamParticles.length < 50) {
+                    steamParticles.push({
+                        x: x + w - 5,
+                        y: y + 25,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: -0.5 - Math.random() * 0.5,
+                        life: 60 + Math.random() * 40,
+                        maxLife: 100,
+                        size: 4 + Math.random() * 4
+                    });
+                }
+            }
+
+            // "GAS TOWN" branded sign
+            if (hasSign) {
+                const signW = 50;
+                const signH = 14;
+                const signX = x + w / 2 - signW / 2;
+                const signY = y + 15;
+
+                ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+                ctx.fillRect(signX, signY, signW, signH);
+                ctx.fillStyle = '#2a2a2a';
+                ctx.font = 'bold 8px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText('GAS TOWN', signX + signW / 2, signY + 10);
+            }
+        }
+
+        function drawGastownChimney(x, groundY, h, colorVar = 0) {
+            const w = 30;
+            const y = groundY - h;
+
+            // Pick brick color based on variant
+            const brickColors = [
+                GASTOWN_COLORS.buildings.brickRed,
+                GASTOWN_COLORS.buildings.brickTan,
+                GASTOWN_COLORS.buildings.brickBrown
+            ];
+            const brickColor = brickColors[colorVar % 3];
+
+            // Chimney body (brick)
+            ctx.fillStyle = brickColor;
+            ctx.fillRect(x, y, w, h);
+
+            // Brick pattern
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brickDark;
+            for (let row = 0; row < h; row += 10) {
+                const offsetBrick = (Math.floor(row / 10) % 2) * 6;
+                for (let col = 0; col < w - 3; col += 12) {
+                    ctx.fillRect(x + col + offsetBrick, y + row, 10, 8);
+                }
+            }
+
+            // Chimney top (wider, with highlight)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+            ctx.fillRect(x - 4, y - 8, w + 8, 12);
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copperLight;
+            ctx.fillRect(x - 4, y - 8, w + 8, 3);
+
+            // Spawn steam from chimney tops
+            if (Math.random() < 0.05 && steamParticles.length < 50) {
+                steamParticles.push({
+                    x: x + w / 2,
+                    y: y - 5,
+                    vx: (Math.random() - 0.5) * 0.8,
+                    vy: -0.8 - Math.random() * 0.6,
+                    life: 80 + Math.random() * 40,
+                    maxLife: 120,
+                    size: 6 + Math.random() * 6
+                });
+            }
+        }
+
+        function drawGastownGround() {
+            const groundY = CONFIG.COOPER_GROUND_Y + CONFIG.COOPER_HEIGHT;
+
+            // Ground edge line (darker for contrast)
+            ctx.strokeStyle = GASTOWN_COLORS.ground.cobbleDark;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(CONFIG.WIDTH, groundY);
+            ctx.stroke();
+
+            // Cobblestone base - gradient from gray to brown
+            const groundGradient = ctx.createLinearGradient(0, groundY, 0, CONFIG.HEIGHT);
+            groundGradient.addColorStop(0, GASTOWN_COLORS.ground.cobbleGray);
+            groundGradient.addColorStop(1, GASTOWN_COLORS.ground.cobbleBrown);
+            ctx.fillStyle = groundGradient;
+            ctx.fillRect(0, groundY, CONFIG.WIDTH, CONFIG.HEIGHT - groundY);
+
+            // Mixed cobblestone pattern (scrolling) - alternating gray and brown
+            for (let row = 0; row < (CONFIG.HEIGHT - groundY); row += 12) {
+                const offsetCobble = (Math.floor(row / 12) % 2) * 10;
+                for (let col = -groundOffset + offsetCobble; col < CONFIG.WIDTH + 20; col += 20) {
+                    // Alternate between gray and brown cobbles using position hash
+                    const hash = (Math.floor(col / 20) + Math.floor(row / 12)) % 3;
+                    if (hash === 0) {
+                        ctx.fillStyle = GASTOWN_COLORS.ground.cobbleDark;
+                    } else if (hash === 1) {
+                        ctx.fillStyle = '#5D5D5D'; // Darker gray
+                    } else {
+                        ctx.fillStyle = '#6B5344'; // Dark brown
+                    }
+
+                    // Rounded cobblestone
+                    ctx.beginPath();
+                    ctx.arc(col + 8, groundY + row + 6, 7, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Subtle highlight on some stones
+                    if (hash === 1) {
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                        ctx.beginPath();
+                        ctx.arc(col + 6, groundY + row + 4, 3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            // Railway tracks (scrolling)
+            const trackY = groundY + 20;
+
+            // Track bed (darker gravel)
+            ctx.fillStyle = '#2D2D2D';
+            ctx.fillRect(0, trackY - 5, CONFIG.WIDTH, 25);
+
+            // Rails (dark iron/steel)
+            ctx.fillStyle = GASTOWN_COLORS.ground.track;
+            ctx.fillRect(0, trackY, CONFIG.WIDTH, 4);
+            ctx.fillRect(0, trackY + 15, CONFIG.WIDTH, 4);
+
+            // Rail shine (steel highlight)
+            ctx.fillStyle = GASTOWN_COLORS.ground.trackShine;
+            ctx.fillRect(0, trackY, CONFIG.WIDTH, 1);
+            ctx.fillRect(0, trackY + 15, CONFIG.WIDTH, 1);
+
+            // Railway ties (scrolling) - dark wood
+            ctx.fillStyle = GASTOWN_COLORS.ground.tie;
+            for (let i = -groundOffset; i < CONFIG.WIDTH + 20; i += 25) {
+                ctx.fillRect(i, trackY - 2, 12, 22);
+            }
+        }
+
+        // ===== STEAM PARTICLE SYSTEM =====
+        function updateSteamParticles() {
+            for (let i = steamParticles.length - 1; i >= 0; i--) {
+                const p = steamParticles[i];
+
+                // Update position
+                p.x += p.vx - gameSpeed * 0.5; // Move with buildings
+                p.y += p.vy;
+
+                // Slow down vertical velocity
+                p.vy *= 0.98;
+
+                // Add slight horizontal drift
+                p.vx += (Math.random() - 0.5) * 0.1;
+
+                // Grow slightly as it rises
+                p.size += 0.05;
+
+                // Decrease life
+                p.life--;
+
+                // Remove dead particles
+                if (p.life <= 0 || p.x < -50) {
+                    steamParticles.splice(i, 1);
+                }
+            }
+        }
+
+        function drawSteamParticles() {
+            for (let p of steamParticles) {
+                const alpha = (p.life / p.maxLife) * 0.6;
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawTitle() {
+            const isGastown = currentWorld === WORLDS.GASTOWN;
+
+            // === BACKGROUND ===
+            if (isGastown) {
+                // Gastown: Warm amber/orange gradient sky
+                const bgGradient = ctx.createLinearGradient(0, 0, 0, CONFIG.HEIGHT);
+                bgGradient.addColorStop(0, GASTOWN_COLORS.sky.top);     // Purple
+                bgGradient.addColorStop(0.4, GASTOWN_COLORS.sky.mid);   // Orange
+                bgGradient.addColorStop(1, GASTOWN_COLORS.sky.bottom);  // Peach
+                ctx.fillStyle = bgGradient;
+                ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+
+                // Gastown silhouette buildings in background
+                drawGastownTitleSilhouettes();
+
+                // Decorative ground (cobblestone-like)
+                const groundY = CONFIG.HEIGHT - 80;
+                ctx.fillStyle = GASTOWN_COLORS.ground.cobbleBrown;
+                ctx.fillRect(0, groundY, CONFIG.WIDTH, 80);
+                ctx.fillStyle = GASTOWN_COLORS.ground.cobbleDark;
+                ctx.fillRect(0, groundY, CONFIG.WIDTH, 3);
+            } else {
+                // City: Dark blue gradient
+                const bgGradient = ctx.createLinearGradient(0, 0, 0, CONFIG.HEIGHT);
+                bgGradient.addColorStop(0, '#1a1a2e');
+                bgGradient.addColorStop(1, '#2a2a4e');
+                ctx.fillStyle = bgGradient;
+                ctx.fillRect(0, 0, CONFIG.WIDTH, CONFIG.HEIGHT);
+
+                // Decorative ground line
+                const groundY = CONFIG.HEIGHT - 80;
+                ctx.fillStyle = '#3a3a5e';
+                ctx.fillRect(0, groundY, CONFIG.WIDTH, 80);
+            }
 
             // Draw large Cooper icon/emote in center
             const cooperScale = 2.5;
@@ -1480,27 +2347,42 @@
 
             ctx.save();
             ctx.scale(cooperScale, cooperScale);
-            drawCooper(cooperX / cooperScale, cooperY / cooperScale, 0);
+            drawCurrentCooper(cooperX / cooperScale, cooperY / cooperScale, 0);
             ctx.restore();
 
-            // Title text below Cooper
-            ctx.fillStyle = 'white';
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 4;
+            // === TITLE TEXT ===
             ctx.font = 'bold 50px Courier New';
             ctx.textAlign = 'center';
+            if (isGastown) {
+                // Gastown: Warm cream title
+                ctx.fillStyle = '#FFF8DC';  // Cornsilk/cream
+                ctx.strokeStyle = '#3D2B1F';  // Dark brown
+            } else {
+                ctx.fillStyle = 'white';
+                ctx.strokeStyle = 'black';
+            }
+            ctx.lineWidth = 4;
             ctx.strokeText('COOPER', CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 70);
             ctx.fillText('COOPER', CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 70);
 
             // Subtitle
             ctx.font = 'bold 14px Courier New';
-            ctx.fillStyle = '#FFD700';
+            if (isGastown) {
+                ctx.fillStyle = GASTOWN_COLORS.buildings.brass;  // Copper/gold
+            } else {
+                ctx.fillStyle = '#FFD700';
+            }
             ctx.fillText('THE DOG RUNNER', CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 95);
 
             // Instruction text
             ctx.font = 'bold 16px Courier New';
-            ctx.fillStyle = 'white';
-            ctx.strokeStyle = 'black';
+            if (isGastown) {
+                ctx.fillStyle = '#FFF8DC';  // Cream
+                ctx.strokeStyle = '#3D2B1F';
+            } else {
+                ctx.fillStyle = 'white';
+                ctx.strokeStyle = 'black';
+            }
             ctx.lineWidth = 3;
             const instructionText = isMobile ? 'TAP TO FETCH' : 'PRESS SPACE TO FETCH';
             ctx.strokeText(instructionText, CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 130);
@@ -1509,14 +2391,19 @@
             // High score (with proper spacing)
             if (highScore > 0) {
                 ctx.font = 'bold 13px Courier New';
-                ctx.fillStyle = '#FFD700';
-                ctx.strokeStyle = 'black';
+                if (isGastown) {
+                    ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;  // Amber/gold
+                    ctx.strokeStyle = '#3D2B1F';
+                } else {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.strokeStyle = 'black';
+                }
                 ctx.lineWidth = 2;
                 ctx.strokeText(`HIGH SCORE: ${highScore}`, CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 160);
                 ctx.fillText(`HIGH SCORE: ${highScore}`, CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2 + 160);
             }
 
-            // "How to Play" card on the right side (smaller and compact)
+            // === "HOW TO PLAY" CARD ===
             const cardX = CONFIG.WIDTH - 170;
             const cardY = CONFIG.HEIGHT / 2 - 70;
             const cardW = 155;
@@ -1526,22 +2413,39 @@
             ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
             ctx.fillRect(cardX + 3, cardY + 3, cardW, cardH);
 
-            // Paper background (off-white with slight cream tint)
-            ctx.fillStyle = '#F5F5DC';
-            ctx.fillRect(cardX, cardY, cardW, cardH);
+            if (isGastown) {
+                // Gastown: Aged parchment look
+                ctx.fillStyle = '#D4B896';  // Aged parchment
+                ctx.fillRect(cardX, cardY, cardW, cardH);
 
-            // Paper border
-            ctx.strokeStyle = '#D3C6A6';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(cardX, cardY, cardW, cardH);
+                // Darker aged border
+                ctx.strokeStyle = '#8B7355';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(cardX, cardY, cardW, cardH);
 
-            // Inner border decoration
-            ctx.strokeStyle = '#E8DCC4';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(cardX + 6, cardY + 6, cardW - 12, cardH - 12);
+                // Inner border (brass/copper accent)
+                ctx.strokeStyle = GASTOWN_COLORS.buildings.brass;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(cardX + 6, cardY + 6, cardW - 12, cardH - 12);
 
-            // Card content
-            ctx.fillStyle = '#2a2a2a';
+                // Card content - darker brown text
+                ctx.fillStyle = '#3D2B1F';
+            } else {
+                // City: Clean cream paper
+                ctx.fillStyle = '#F5F5DC';
+                ctx.fillRect(cardX, cardY, cardW, cardH);
+
+                ctx.strokeStyle = '#D3C6A6';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(cardX, cardY, cardW, cardH);
+
+                ctx.strokeStyle = '#E8DCC4';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(cardX + 6, cardY + 6, cardW - 12, cardH - 12);
+
+                ctx.fillStyle = '#2a2a2a';
+            }
+
             ctx.textAlign = 'center';
 
             // Title
@@ -1549,7 +2453,7 @@
             ctx.fillText('HOW TO PLAY', cardX + cardW / 2, cardY + 22);
 
             // Divider line
-            ctx.strokeStyle = '#D3C6A6';
+            ctx.strokeStyle = isGastown ? GASTOWN_COLORS.buildings.brass : '#D3C6A6';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(cardX + 15, cardY + 30);
@@ -1559,26 +2463,79 @@
             // Instructions (compact)
             ctx.font = '9px Courier New';
             ctx.textAlign = 'left';
+            ctx.fillStyle = isGastown ? '#3D2B1F' : '#2a2a2a';
 
             ctx.fillText('PC: [SPACE] to Jump', cardX + 15, cardY + 50);
             ctx.fillText('Mobile: TAP to Jump', cardX + 15, cardY + 70);
 
             // Additional info
             ctx.font = 'bold 9px Courier New';
-            ctx.fillStyle = '#DC143C';
+            ctx.fillStyle = isGastown ? '#8B0000' : '#DC143C';  // Dark red for Gastown
             ctx.textAlign = 'center';
             ctx.fillText('Avoid obstacles!', cardX + cardW / 2, cardY + 95);
 
-            ctx.fillStyle = '#2a2a2a';
+            ctx.fillStyle = isGastown ? '#3D2B1F' : '#2a2a2a';
             ctx.font = '8px Courier New';
             ctx.fillText('Level up every', cardX + cardW / 2, cardY + 115);
             ctx.fillText('500 points', cardX + cardW / 2, cardY + 127);
 
             // "Built with Claude" at the bottom center
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            if (isGastown) {
+                ctx.fillStyle = 'rgba(139, 115, 85, 0.6)';  // Muted tan
+            } else {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            }
             ctx.font = '10px Courier New';
             ctx.textAlign = 'center';
             ctx.fillText('Built with Claude', CONFIG.WIDTH / 2, CONFIG.HEIGHT - 15);
+        }
+
+        // Gastown title screen silhouettes
+        function drawGastownTitleSilhouettes() {
+            const groundY = CONFIG.HEIGHT - 80;
+
+            // Dark silhouette color for distant buildings
+            ctx.fillStyle = GASTOWN_COLORS.farSilhouette;
+
+            // Smokestacks and factory silhouettes
+            // Left side
+            ctx.fillRect(30, groundY - 120, 25, 120);
+            ctx.fillRect(25, groundY - 130, 35, 15);
+
+            ctx.fillRect(80, groundY - 90, 20, 90);
+            ctx.fillRect(75, groundY - 95, 30, 10);
+
+            // Right side
+            ctx.fillRect(650, groundY - 140, 30, 140);
+            ctx.fillRect(645, groundY - 150, 40, 15);
+
+            ctx.fillRect(720, groundY - 100, 25, 100);
+            ctx.fillRect(715, groundY - 105, 35, 10);
+
+            // Mid-ground buildings (slightly lighter)
+            ctx.fillStyle = '#4A3520';
+
+            // Left cluster
+            ctx.fillRect(100, groundY - 70, 60, 70);
+            ctx.fillRect(170, groundY - 55, 50, 55);
+
+            // Right cluster
+            ctx.fillRect(550, groundY - 80, 70, 80);
+            ctx.fillRect(500, groundY - 60, 45, 60);
+
+            // A few glowing windows on mid buildings
+            ctx.fillStyle = GASTOWN_COLORS.buildings.window;
+            // Left building windows
+            ctx.fillRect(115, groundY - 55, 8, 10);
+            ctx.fillRect(135, groundY - 55, 8, 10);
+            ctx.fillRect(115, groundY - 35, 8, 10);
+            ctx.fillRect(135, groundY - 35, 8, 10);
+
+            // Right building windows
+            ctx.fillRect(565, groundY - 65, 8, 10);
+            ctx.fillRect(585, groundY - 65, 8, 10);
+            ctx.fillRect(565, groundY - 45, 8, 10);
+            ctx.fillRect(585, groundY - 45, 8, 10);
         }
 
         function drawZoomTransition() {
@@ -1587,20 +2544,28 @@
             const easedProgress = easeOutCubic(progress);
             const currentScale = zoomTransition.scale - ((zoomTransition.scale - zoomTransition.targetScale) * easedProgress);
 
-            // Draw full city scene with zoom
+            // Draw full scene with zoom
             ctx.save();
             ctx.translate(CONFIG.WIDTH / 2, CONFIG.HEIGHT / 2);
             ctx.scale(currentScale, currentScale);
             ctx.translate(-CONFIG.WIDTH / 2, -CONFIG.HEIGHT / 2);
 
-            // Draw background layers (clouds, buildings, etc.)
-            drawClouds();
-            drawAirplanes();
-            drawBuildings();
-            drawGround();
+            // Draw background layers based on world
+            if (currentWorld === WORLDS.GASTOWN) {
+                drawGastownFarLayer();
+                drawGastownMidFarLayer();
+                drawGastownMidLayer();
+                drawSteamParticles();
+                drawGastownGround();
+            } else {
+                drawClouds();
+                drawAirplanes();
+                drawBuildings();
+                drawGround();
+            }
 
             // Draw Cooper
-            drawCooper(CONFIG.COOPER_X, CONFIG.COOPER_GROUND_Y, 0);
+            drawCurrentCooper(CONFIG.COOPER_X, CONFIG.COOPER_GROUND_Y, 0);
 
             // Draw tennis ball (starts appearing at frame 20)
             if (zoomTransition.frame >= 20) {
@@ -1619,7 +2584,7 @@
             }
 
             // Draw Cooper
-            drawCooper(cooper.x, cooper.y, cooper.animFrame);
+            drawCurrentCooper(cooper.x, cooper.y, cooper.animFrame);
 
             // Draw UI
             drawUI();
@@ -1656,7 +2621,7 @@
             for (let obstacle of obstacles) {
                 drawObstacle(obstacle);
             }
-            drawCooper(cooper.x, cooper.y, 0);
+            drawCurrentCooper(cooper.x, cooper.y, 0);
 
             // Game over overlay (darker)
             ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -1731,6 +2696,16 @@
         }
 
         // ===== SPRITE DRAWING =====
+
+        // Wrapper function that draws the appropriate Cooper for the current world
+        function drawCurrentCooper(x, y, frame) {
+            if (currentWorld === WORLDS.GASTOWN) {
+                drawSteampunkCooper(x, y, frame);
+            } else {
+                drawCooper(x, y, frame);
+            }
+        }
+
         function drawCooper(x, y, frame) {
             const w = CONFIG.COOPER_WIDTH;
             const h = CONFIG.COOPER_HEIGHT;
@@ -1821,6 +2796,174 @@
                 ctx.fillRect(x + 4, y + 23, 5, 7);
                 ctx.fillRect(x + 5, y + 20, 3, 5);
             }
+        }
+
+        // Steampunk Cooper variant for Gastown (with top hat)
+        function drawSteampunkCooper(x, y, frame) {
+            const w = CONFIG.COOPER_WIDTH;
+            const h = CONFIG.COOPER_HEIGHT;
+
+            // Motion lines (vibration effect) - same as regular Cooper
+            if (gameState === GAME_STATE.PLAYING && frame % 2 === 0) {
+                ctx.strokeStyle = 'rgba(210, 105, 30, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x - 2, y + 13);
+                ctx.lineTo(x - 5, y + 13);
+                ctx.moveTo(x - 2, y + 22);
+                ctx.lineTo(x - 5, y + 22);
+                ctx.stroke();
+            } else if (gameState === GAME_STATE.PLAYING) {
+                ctx.strokeStyle = 'rgba(210, 105, 30, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x - 2, y + 18);
+                ctx.lineTo(x - 5, y + 18);
+                ctx.moveTo(x - 2, y + 27);
+                ctx.lineTo(x - 5, y + 27);
+                ctx.stroke();
+            }
+
+            // Body color
+            ctx.fillStyle = '#D2691E'; // Brown
+
+            // Body (90% size)
+            ctx.fillRect(x + 7, y + 18, 29, 22);
+
+            // Head (facing right, 90% size)
+            ctx.fillRect(x + 22, y + 7, 22, 22);
+
+            // === COLLAR (red band around neck - steep diagonal "/" shape) ===
+            // Goes from behind ear (upper back) down to throat (lower front)
+            ctx.fillStyle = '#CC0000';  // Red
+            ctx.beginPath();
+            ctx.moveTo(x + 21, y + 17);  // Back of neck (high, behind ear)
+            ctx.lineTo(x + 25, y + 17);  // Back top edge
+            ctx.lineTo(x + 33, y + 27);  // Front of throat (low)
+            ctx.lineTo(x + 29, y + 27);  // Front bottom edge
+            ctx.closePath();
+            ctx.fill();
+
+            // Collar highlight (top edge)
+            ctx.fillStyle = '#EE2222';
+            ctx.beginPath();
+            ctx.moveTo(x + 21, y + 17);
+            ctx.lineTo(x + 25, y + 17);
+            ctx.lineTo(x + 32, y + 25);
+            ctx.lineTo(x + 28, y + 25);
+            ctx.closePath();
+            ctx.fill();
+
+            // Brass buckle (small, on the collar)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 27, y + 22, 3, 3);
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.fillRect(x + 27, y + 22, 3, 1);
+
+            // Snout (on right side)
+            ctx.fillStyle = '#8B4513'; // Darker brown
+            ctx.fillRect(x + 38, y + 16, 9, 9);
+
+            // Tongue sticking out (pink)
+            ctx.fillStyle = '#FF69B4';
+            ctx.fillRect(x + 45, y + 22, 5, 3);
+            ctx.fillRect(x + 47, y + 24, 3, 2);
+
+            // Ear (on left of head, floppy)
+            ctx.fillStyle = '#A0522D';
+            ctx.fillRect(x + 18, y + 4, 7, 11);
+            ctx.fillRect(x + 20, y + 13, 4, 4);
+
+            // Eye (90% size)
+            ctx.fillStyle = 'black';
+            ctx.fillRect(x + 29, y + 13, 4, 4);
+            // Eye shine
+            ctx.fillStyle = 'white';
+            ctx.fillRect(x + 31, y + 13, 2, 2);
+
+            // Nose (on snout tip, black)
+            ctx.fillStyle = 'black';
+            ctx.fillRect(x + 43, y + 20, 3, 3);
+
+            // === TOP HAT ===
+            drawSteampunkTopHat(x, y);
+
+            // Draw leg motion blur (semi-transparent previous positions)
+            if (gameState === GAME_STATE.PLAYING && frame % 2 === 1) {
+                if (cooper.prevLegFrame >= 0) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.4;
+                    drawLegs(x, y, cooper.prevLegFrame);
+                    ctx.restore();
+                }
+
+                if (cooper.prevPrevLegFrame >= 0) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.2;
+                    drawLegs(x, y, cooper.prevPrevLegFrame);
+                    ctx.restore();
+                }
+            }
+
+            // Draw current legs at full opacity
+            drawLegs(x, y, frame);
+
+            // Tail (on left side, wagging)
+            ctx.fillStyle = '#A0522D';
+            if (frame % 4 < 2) {
+                ctx.fillRect(x + 4, y + 22, 5, 7);
+                ctx.fillRect(x + 4, y + 18, 3, 5);
+            } else {
+                ctx.fillRect(x + 4, y + 23, 5, 7);
+                ctx.fillRect(x + 5, y + 20, 3, 5);
+            }
+        }
+
+        // Steampunk top hat - simple side view
+        function drawSteampunkTopHat(x, y) {
+            // Cooper's head is at x+22, y+7 (22x22)
+            // Hat sits on top of head, slightly tilted forward
+
+            const hatColor = '#2A2A2A';      // Dark black/charcoal
+            const hatHighlight = '#3D3D3D';  // Slightly lighter for edge
+            const hatDark = '#1A1A1A';       // Darker shadow
+
+            // === BRIM (flat horizontal part) ===
+            // Extends slightly past the head on both sides
+            ctx.fillStyle = hatColor;
+            ctx.fillRect(x + 24, y + 5, 18, 3);  // Main brim
+
+            // Brim front edge (slightly darker, shows thickness)
+            ctx.fillStyle = hatDark;
+            ctx.fillRect(x + 24, y + 7, 18, 1);
+
+            // Brim highlight on top
+            ctx.fillStyle = hatHighlight;
+            ctx.fillRect(x + 24, y + 5, 18, 1);
+
+            // === CROWN (tall rectangular part) ===
+            ctx.fillStyle = hatColor;
+            ctx.fillRect(x + 26, y - 5, 14, 11);  // Crown body
+
+            // Crown left edge shadow
+            ctx.fillStyle = hatDark;
+            ctx.fillRect(x + 26, y - 5, 2, 11);
+
+            // Crown right edge highlight
+            ctx.fillStyle = hatHighlight;
+            ctx.fillRect(x + 38, y - 5, 2, 11);
+
+            // Crown top
+            ctx.fillStyle = hatHighlight;
+            ctx.fillRect(x + 26, y - 5, 14, 2);
+
+            // === BRASS BAND (steampunk touch) ===
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 26, y + 2, 14, 2);
+
+            // Band highlight
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.fillRect(x + 26, y + 2, 14, 1);
         }
 
         // Helper function to draw tennis ball
@@ -2036,11 +3179,502 @@
             ctx.strokeRect(x + 2, y + 11, 32, 5);
         }
 
+        // ===== GASTOWN OBSTACLES =====
+
+        // 1. Brass Barrel - similar size to fire hydrant (29x43)
+        function drawBrassBarrel(x, y) {
+            // Shadow underneath
+            ctx.fillStyle = GASTOWN_COLORS.accents.shadow;
+            ctx.beginPath();
+            ctx.ellipse(x + 15, y + 44, 12, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Barrel body (copper/bronze)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+            ctx.fillRect(x + 5, y + 5, 20, 38);
+
+            // Bright highlight on left edge
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copperLight;
+            ctx.fillRect(x + 5, y + 5, 4, 38);
+
+            // Barrel curve mid-highlight
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.fillRect(x + 9, y + 5, 5, 38);
+
+            // Dark shadow on right
+            ctx.fillStyle = '#6B4423';
+            ctx.fillRect(x + 20, y + 5, 5, 38);
+
+            // Metal bands (brass with highlights)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 3, y + 8, 24, 4);
+            ctx.fillRect(x + 3, y + 20, 24, 4);
+            ctx.fillRect(x + 3, y + 35, 24, 4);
+
+            // Band highlights
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.fillRect(x + 3, y + 8, 24, 1);
+            ctx.fillRect(x + 3, y + 20, 24, 1);
+            ctx.fillRect(x + 3, y + 35, 24, 1);
+
+            // Rivets on bands
+            ctx.fillStyle = '#4A3421';
+            ctx.fillRect(x + 6, y + 9, 2, 2);
+            ctx.fillRect(x + 22, y + 9, 2, 2);
+            ctx.fillRect(x + 6, y + 21, 2, 2);
+            ctx.fillRect(x + 22, y + 21, 2, 2);
+            ctx.fillRect(x + 6, y + 36, 2, 2);
+            ctx.fillRect(x + 22, y + 36, 2, 2);
+
+            // Top rim with highlight
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 4, y + 2, 22, 4);
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.fillRect(x + 4, y + 2, 22, 1);
+
+            // Outline
+            ctx.strokeStyle = '#4A3421';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x + 5, y + 5, 20, 38);
+        }
+
+        // 2. Wooden Crate - slightly wider (35x40) - tan/beige, not brown
+        function drawWoodenCrate(x, y) {
+            // Shadow underneath
+            ctx.fillStyle = GASTOWN_COLORS.accents.shadow;
+            ctx.beginPath();
+            ctx.ellipse(x + 18, y + 42, 14, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Crate body (lighter tan/beige wood)
+            ctx.fillStyle = '#C4A67C';  // Light tan
+            ctx.fillRect(x + 2, y + 5, 32, 35);
+
+            // Light edge highlight
+            ctx.fillStyle = '#D9C4A0';
+            ctx.fillRect(x + 2, y + 5, 3, 35);
+
+            // Wood plank lines (horizontal)
+            ctx.strokeStyle = '#A08060';
+            ctx.lineWidth = 1;
+            for (let py = y + 12; py < y + 40; py += 9) {
+                ctx.beginPath();
+                ctx.moveTo(x + 2, py);
+                ctx.lineTo(x + 34, py);
+                ctx.stroke();
+            }
+
+            // Cross braces (darker wood)
+            ctx.fillStyle = '#8B7355';
+            ctx.fillRect(x + 4, y + 7, 4, 31);
+            ctx.fillRect(x + 28, y + 7, 4, 31);
+
+            // Diagonal brace
+            ctx.strokeStyle = '#8B7355';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x + 8, y + 8);
+            ctx.lineTo(x + 28, y + 35);
+            ctx.stroke();
+
+            // Corner brackets (shiny brass)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 2, y + 5, 6, 6);
+            ctx.fillRect(x + 28, y + 5, 6, 6);
+            ctx.fillRect(x + 2, y + 34, 6, 6);
+            ctx.fillRect(x + 28, y + 34, 6, 6);
+
+            // Bracket highlights
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.fillRect(x + 2, y + 5, 6, 2);
+            ctx.fillRect(x + 28, y + 5, 6, 2);
+
+            // Stamp/marking on crate
+            ctx.fillStyle = '#5A4A3A';
+            ctx.font = 'bold 7px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('GT', x + 18, y + 26);
+
+            // Outline
+            ctx.strokeStyle = '#7A6A5A';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x + 2, y + 5, 32, 35);
+        }
+
+        // 3. Pipe Stack - low obstacle (40x28)
+        function drawPipeStack(x, y) {
+            const pipeRadius = 8;
+
+            // Shadow underneath
+            ctx.fillStyle = GASTOWN_COLORS.accents.shadow;
+            ctx.beginPath();
+            ctx.ellipse(x + 20, y + 30, 18, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bottom pipes (2 pipes) - brass base
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.beginPath();
+            ctx.arc(x + 10, y + 20, pipeRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 30, y + 20, pipeRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Top pipe (centered)
+            ctx.beginPath();
+            ctx.arc(x + 20, y + 8, pipeRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bright pipe highlights (shinier)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.beginPath();
+            ctx.arc(x + 7, y + 17, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 27, y + 17, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 17, y + 5, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Pipe openings (dark centers)
+            ctx.fillStyle = '#1a1a1a';
+            ctx.beginPath();
+            ctx.arc(x + 10, y + 20, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 30, y + 20, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 20, y + 8, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Outlines
+            ctx.strokeStyle = '#6B4A2B';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(x + 10, y + 20, pipeRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x + 30, y + 20, pipeRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x + 20, y + 8, pipeRadius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // 4. Large Gear - medium obstacle (38x38)
+        function drawLargeGearObstacle(x, y) {
+            const centerX = x + 19;
+            const centerY = y + 19;
+            const radius = 17;
+            const teeth = 10;
+            const toothHeight = 5;
+
+            // Shadow underneath
+            ctx.fillStyle = GASTOWN_COLORS.accents.shadow;
+            ctx.beginPath();
+            ctx.ellipse(centerX, y + 40, 16, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Gear body
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+            ctx.beginPath();
+            for (let i = 0; i < teeth; i++) {
+                const angle1 = (i / teeth) * Math.PI * 2;
+                const angle2 = ((i + 0.5) / teeth) * Math.PI * 2;
+
+                const innerX = centerX + Math.cos(angle1) * (radius - toothHeight);
+                const innerY = centerY + Math.sin(angle1) * (radius - toothHeight);
+                const outerX = centerX + Math.cos(angle1) * radius;
+                const outerY = centerY + Math.sin(angle1) * radius;
+                const nextInnerX = centerX + Math.cos(angle2) * (radius - toothHeight);
+                const nextInnerY = centerY + Math.sin(angle2) * (radius - toothHeight);
+
+                if (i === 0) {
+                    ctx.moveTo(innerX, innerY);
+                }
+                ctx.lineTo(outerX, outerY);
+                ctx.lineTo(nextInnerX, nextInnerY);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // Bright gear highlight
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.beginPath();
+            ctx.arc(centerX - 4, centerY - 4, 9, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Center hub (darker)
+            ctx.fillStyle = '#4A3421';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 7, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Hub highlight
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.beginPath();
+            ctx.arc(centerX - 2, centerY - 2, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Center hole
+            ctx.fillStyle = '#1a1a1a';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Spoke holes
+            ctx.fillStyle = '#3A2A1A';
+            for (let i = 0; i < 4; i++) {
+                const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+                const hx = centerX + Math.cos(angle) * 10;
+                const hy = centerY + Math.sin(angle) * 10;
+                ctx.beginPath();
+                ctx.arc(hx, hy, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Outline
+            ctx.strokeStyle = '#6B4A2B';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius - 2, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // 5. Coal Cart - taller obstacle (45x48)
+        function drawCoalCart(x, y) {
+            // Shadow underneath
+            ctx.fillStyle = GASTOWN_COLORS.accents.shadow;
+            ctx.beginPath();
+            ctx.ellipse(x + 22, y + 50, 18, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Cart body (wood - lighter tan)
+            ctx.fillStyle = '#9B8365';
+            ctx.fillRect(x + 5, y + 10, 35, 25);
+
+            // Cart highlight edge
+            ctx.fillStyle = '#B8A080';
+            ctx.fillRect(x + 5, y + 10, 3, 25);
+
+            // Cart interior shadow
+            ctx.fillStyle = '#4a3a2a';
+            ctx.fillRect(x + 8, y + 13, 29, 19);
+
+            // Coal pile
+            ctx.fillStyle = '#1a1a1a';
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y + 15);
+            ctx.lineTo(x + 22, y + 5);
+            ctx.lineTo(x + 35, y + 15);
+            ctx.lineTo(x + 35, y + 30);
+            ctx.lineTo(x + 10, y + 30);
+            ctx.closePath();
+            ctx.fill();
+
+            // Coal chunks highlights (subtle shine)
+            ctx.fillStyle = '#3a3a3a';
+            ctx.fillRect(x + 15, y + 10, 4, 4);
+            ctx.fillRect(x + 25, y + 12, 3, 3);
+            ctx.fillRect(x + 20, y + 18, 5, 4);
+            ctx.fillRect(x + 28, y + 8, 3, 3);
+
+            // Metal frame (shiny brass)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 3, y + 8, 4, 29);
+            ctx.fillRect(x + 38, y + 8, 4, 29);
+            ctx.fillRect(x + 3, y + 8, 39, 4);
+
+            // Frame highlights
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.fillRect(x + 3, y + 8, 2, 29);
+            ctx.fillRect(x + 3, y + 8, 39, 1);
+
+            // Wheels (dark iron)
+            ctx.fillStyle = '#3A3A3A';
+            ctx.beginPath();
+            ctx.arc(x + 12, y + 42, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 33, y + 42, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Wheel rims
+            ctx.strokeStyle = '#5A5A5A';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(x + 12, y + 42, 6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x + 33, y + 42, 6, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Wheel hubs (shiny brass)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.beginPath();
+            ctx.arc(x + 12, y + 42, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 33, y + 42, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Axle
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fillRect(x + 10, y + 40, 25, 4);
+        }
+
+        // 6. Steam Vent - low with animated steam (30x20 base, extends when active)
+        function drawSteamVent(x, y, steamActive) {
+            // Grate base (dark iron)
+            ctx.fillStyle = '#3A3A3A';
+            ctx.fillRect(x + 2, y + 12, 26, 8);
+
+            // Grate slats
+            ctx.fillStyle = '#1a1a1a';
+            for (let i = 0; i < 5; i++) {
+                ctx.fillRect(x + 5 + i * 5, y + 14, 3, 4);
+            }
+
+            // Brass frame with highlights
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x, y + 10, 30, 3);
+            ctx.fillRect(x, y + 18, 30, 3);
+            ctx.fillRect(x, y + 10, 3, 11);
+            ctx.fillRect(x + 27, y + 10, 3, 11);
+
+            // Frame highlights
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.fillRect(x, y + 10, 30, 1);
+            ctx.fillRect(x, y + 10, 1, 11);
+
+            // Steam puff when active
+            if (steamActive) {
+                // Multiple steam puffs rising (brighter white)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.beginPath();
+                ctx.ellipse(x + 15, y + 2, 10, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.beginPath();
+                ctx.ellipse(x + 12, y - 8, 8, 5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(x + 18, y - 6, 7, 4, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.beginPath();
+                ctx.ellipse(x + 15, y - 18, 12, 7, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Warning stripes (golden yellow)
+            ctx.fillStyle = GASTOWN_COLORS.accents.gold;
+            ctx.fillRect(x + 3, y + 20, 8, 3);
+            ctx.fillRect(x + 19, y + 20, 8, 3);
+        }
+
+        // 7. Lantern Post - tall obstacle (25x55)
+        function drawLanternPost(x, y) {
+            // Shadow underneath
+            ctx.fillStyle = GASTOWN_COLORS.accents.shadow;
+            ctx.beginPath();
+            ctx.ellipse(x + 13, y + 57, 8, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Post base (dark iron)
+            ctx.fillStyle = '#3A3A3A';
+            ctx.fillRect(x + 8, y + 45, 10, 10);
+
+            // Base highlight
+            ctx.fillStyle = '#5A5A5A';
+            ctx.fillRect(x + 8, y + 45, 10, 2);
+
+            // Post body
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fillRect(x + 10, y + 20, 6, 28);
+
+            // Post highlight edge
+            ctx.fillStyle = '#4A4A4A';
+            ctx.fillRect(x + 10, y + 20, 2, 28);
+
+            // Decorative rings (shiny brass)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 8, y + 43, 10, 3);
+            ctx.fillRect(x + 9, y + 30, 8, 2);
+
+            // Ring highlights
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brassLight;
+            ctx.fillRect(x + 8, y + 43, 10, 1);
+
+            // Lantern housing
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(x + 5, y + 8, 16, 14);
+
+            // Lantern top (copper with highlight)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copper;
+            ctx.beginPath();
+            ctx.moveTo(x + 3, y + 8);
+            ctx.lineTo(x + 13, y + 2);
+            ctx.lineTo(x + 23, y + 8);
+            ctx.fill();
+
+            // Top highlight
+            ctx.fillStyle = GASTOWN_COLORS.buildings.copperLight;
+            ctx.beginPath();
+            ctx.moveTo(x + 5, y + 7);
+            ctx.lineTo(x + 13, y + 3);
+            ctx.lineTo(x + 13, y + 5);
+            ctx.lineTo(x + 7, y + 8);
+            ctx.fill();
+
+            // Glass panels with BRIGHT warm glow (flickering)
+            const flicker = 0.8 + Math.sin(frameCount * 0.3) * 0.2;
+
+            // Outer glow (larger, softer)
+            ctx.fillStyle = `rgba(255, 200, 100, ${flicker * 0.4})`;
+            ctx.beginPath();
+            ctx.arc(x + 13, y + 15, 16, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner glow
+            ctx.fillStyle = `rgba(255, 165, 0, ${flicker * 0.5})`;
+            ctx.beginPath();
+            ctx.arc(x + 13, y + 15, 10, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bright center (golden yellow)
+            ctx.fillStyle = `rgba(255, 215, 0, ${flicker})`;
+            ctx.fillRect(x + 7, y + 10, 12, 10);
+
+            // White hot center
+            ctx.fillStyle = `rgba(255, 255, 200, ${flicker * 0.7})`;
+            ctx.fillRect(x + 9, y + 12, 8, 6);
+
+            // Glass frame lines
+            ctx.strokeStyle = '#1a1a1a';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x + 13, y + 10);
+            ctx.lineTo(x + 13, y + 20);
+            ctx.moveTo(x + 7, y + 15);
+            ctx.lineTo(x + 19, y + 15);
+            ctx.stroke();
+
+            // Bracket arm (brass)
+            ctx.fillStyle = GASTOWN_COLORS.buildings.brass;
+            ctx.fillRect(x + 12, y + 18, 4, 4);
+        }
+
         // Unified obstacle drawing function
         function drawObstacle(obstacle) {
             const { type } = obstacle;
 
             switch(type) {
+                // City obstacles
                 case 'hydrant':
                     drawFireHydrant(obstacle.x, obstacle.y);
                     break;
@@ -2058,6 +3692,29 @@
                     break;
                 case 'trash_bin':
                     drawTrashBin(obstacle.x, obstacle.y);
+                    break;
+
+                // Gastown obstacles
+                case 'brass_barrel':
+                    drawBrassBarrel(obstacle.x, obstacle.y);
+                    break;
+                case 'wooden_crate':
+                    drawWoodenCrate(obstacle.x, obstacle.y);
+                    break;
+                case 'pipe_stack':
+                    drawPipeStack(obstacle.x, obstacle.y);
+                    break;
+                case 'large_gear':
+                    drawLargeGearObstacle(obstacle.x, obstacle.y);
+                    break;
+                case 'coal_cart':
+                    drawCoalCart(obstacle.x, obstacle.y);
+                    break;
+                case 'steam_vent':
+                    drawSteamVent(obstacle.x, obstacle.y, obstacle.steamActive);
+                    break;
+                case 'lantern_post':
+                    drawLanternPost(obstacle.x, obstacle.y);
                     break;
             }
         }
