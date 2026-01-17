@@ -175,6 +175,121 @@
         // Sound effect generators (created on first user interaction)
         let soundsInitialized = false;
 
+        // ===== SOUND FUNCTIONS =====
+        function initAudio() {
+            if (soundsInitialized) return;
+
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                // Load Gastown music
+                if (currentWorld === WORLDS.GASTOWN) {
+                    loadGastownMusic();
+                }
+
+                soundsInitialized = true;
+            } catch (e) {
+                console.log('Audio not supported:', e);
+            }
+        }
+
+        async function loadGastownMusic() {
+            try {
+                const response = await fetch('audio/gastown-music.mp3');
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                gastownMusic = audioBuffer;
+
+                // Auto-play if game has already started
+                if (gameState !== GAME_STATE.TITLE) {
+                    playBackgroundMusic();
+                }
+            } catch (e) {
+                console.log('Failed to load Gastown music:', e);
+            }
+        }
+
+        function playBackgroundMusic() {
+            if (!audioContext || !gastownMusic || musicPlaying || isMuted) return;
+
+            const source = audioContext.createBufferSource();
+            source.buffer = gastownMusic;
+            source.loop = true;
+
+            // Create gain node for volume control
+            const gainNode = audioContext.createGain();
+            gainNode.gain.value = 0.4; // 40% volume
+
+            source.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            source.start(0);
+            musicPlaying = true;
+
+            // Store reference for stopping
+            window.currentMusicSource = source;
+            window.currentMusicGain = gainNode;
+        }
+
+        function stopBackgroundMusic() {
+            if (window.currentMusicSource) {
+                try {
+                    window.currentMusicSource.stop();
+                } catch (e) {}
+                window.currentMusicSource = null;
+                musicPlaying = false;
+            }
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            if (window.currentMusicGain) {
+                window.currentMusicGain.gain.value = isMuted ? 0 : 0.4;
+            }
+        }
+
+        // Simple jump sound using Web Audio API oscillator
+        function playJumpSound() {
+            if (!audioContext || isMuted) return;
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.1);
+
+            gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.15);
+        }
+
+        // Game over sound
+        function playGameOverSound() {
+            if (!audioContext || isMuted) return;
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(300, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.3);
+
+            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.4);
+        }
+
         // Cooper
         let cooper = {
             x: CONFIG.COOPER_X,
@@ -747,19 +862,58 @@
             if (e.code === 'Space') {
                 e.preventDefault();
                 handleAction();
+            } else if (e.code === 'KeyM') {
+                initAudio();
+                toggleMute();
             }
         }
 
         function handleTouch(e) {
             e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = CONFIG.WIDTH / rect.width;
+            const scaleY = CONFIG.HEIGHT / rect.height;
+            const x = (touch.clientX - rect.left) * scaleX;
+            const y = (touch.clientY - rect.top) * scaleY;
+
+            if (isMuteButtonClick(x, y)) {
+                initAudio();
+                toggleMute();
+                return;
+            }
             handleAction();
         }
 
         function handleClick(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = CONFIG.WIDTH / rect.width;
+            const scaleY = CONFIG.HEIGHT / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+
+            if (isMuteButtonClick(x, y)) {
+                initAudio();
+                toggleMute();
+                return;
+            }
             handleAction();
         }
 
+        function isMuteButtonClick(x, y) {
+            const btnX = CONFIG.WIDTH - 45;
+            const btnY = CONFIG.HEIGHT - 45;
+            const btnSize = 30;
+            const centerX = btnX + btnSize/2;
+            const centerY = btnY + btnSize/2;
+            const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+            return distance <= btnSize/2 + 5;
+        }
+
         function handleAction() {
+            // Initialize audio on first user interaction (browser requirement)
+            initAudio();
+
             if (gameState === GAME_STATE.TITLE) {
                 startZoomTransition();
             } else if (gameState === GAME_STATE.PLAYING) {
@@ -794,6 +948,9 @@
                 gastownLayers.mid.offset = 0;
                 gastownLayers.airship = { x: CONFIG.WIDTH + 100, y: 50 };
                 steamParticles = [];
+
+                // Start Gastown music
+                playBackgroundMusic();
             } else {
                 backgroundLayers.clouds.offset = 0;
                 backgroundLayers.buildings.offset = 0;
@@ -840,6 +997,10 @@
         function gameOver() {
             gameState = GAME_STATE.GAME_OVER;
 
+            // Play game over sound and stop music
+            playGameOverSound();
+            stopBackgroundMusic();
+
             // Update high score
             if (score > highScore) {
                 highScore = score;
@@ -852,6 +1013,7 @@
             if (!cooper.isJumping) {
                 cooper.velocityY = CONFIG.JUMP_FORCE;
                 cooper.isJumping = true;
+                playJumpSound();
             }
         }
 
@@ -1298,6 +1460,11 @@
                 drawPlaying();
             } else if (gameState === GAME_STATE.GAME_OVER) {
                 drawGameOver();
+            }
+
+            // Always draw mute button (except during zoom transition)
+            if (gameState !== GAME_STATE.ZOOM_TRANSITION) {
+                drawMuteButton();
             }
         }
 
@@ -2693,6 +2860,53 @@
             ctx.font = 'bold 14px Courier New';
             ctx.strokeText(`HI: ${highScore}`, CONFIG.WIDTH - 20, 60);
             ctx.fillText(`HI: ${highScore}`, CONFIG.WIDTH - 20, 60);
+
+            // Draw mute button
+            drawMuteButton();
+        }
+
+        function drawMuteButton() {
+            const btnX = CONFIG.WIDTH - 45;
+            const btnY = CONFIG.HEIGHT - 45;
+            const btnSize = 30;
+
+            // Button background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.beginPath();
+            ctx.arc(btnX + btnSize/2, btnY + btnSize/2, btnSize/2 + 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Speaker icon
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.moveTo(btnX + 8, btnY + 12);
+            ctx.lineTo(btnX + 14, btnY + 12);
+            ctx.lineTo(btnX + 20, btnY + 6);
+            ctx.lineTo(btnX + 20, btnY + 24);
+            ctx.lineTo(btnX + 14, btnY + 18);
+            ctx.lineTo(btnX + 8, btnY + 18);
+            ctx.closePath();
+            ctx.fill();
+
+            if (isMuted) {
+                // Draw X over speaker
+                ctx.strokeStyle = '#FF6B6B';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(btnX + 4, btnY + 4);
+                ctx.lineTo(btnX + 26, btnY + 26);
+                ctx.stroke();
+            } else {
+                // Draw sound waves
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(btnX + 20, btnY + 15, 5, -Math.PI/3, Math.PI/3);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(btnX + 20, btnY + 15, 9, -Math.PI/3, Math.PI/3);
+                ctx.stroke();
+            }
         }
 
         // ===== SPRITE DRAWING =====
